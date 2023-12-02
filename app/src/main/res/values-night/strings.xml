@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fileSelectionButton">FileSelectionButton</string>
+    <string name="enter_text">Enter Text</string>
+    <string name="sendButton">SendButton</string>
+</resources>
