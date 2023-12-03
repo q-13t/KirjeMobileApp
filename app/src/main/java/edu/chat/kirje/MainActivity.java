@@ -1,13 +1,12 @@
 package edu.chat.kirje;
 
-import androidx.appcompat.app.AppCompatActivity;
-
 import android.os.Bundle;
-import android.view.ContextThemeWrapper;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+
+import androidx.appcompat.app.AppCompatActivity;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -15,7 +14,6 @@ public class MainActivity extends AppCompatActivity {
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
-//		Objects.requireNonNull(getSupportActionBar()).hide();
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
 		chatLayout = findViewById(R.id.ChatSection);
@@ -25,14 +23,11 @@ public class MainActivity extends AppCompatActivity {
 	public void SendMessage(View view) {
 	EditText editText = findViewById(R.id.editText);
 	if(!"".equals(editText.getText().toString())){
-		ContextThemeWrapper newContext = new ContextThemeWrapper(this, R.style.Theme_Kirje);
-		LinearLayout messageLayout = new LinearLayout(newContext);
-		TextView message = new TextView(this);
-		message.setText(editText.getText());
+		LinearLayout container = (LinearLayout) getLayoutInflater().inflate(R.layout.message_out_container, chatLayout,true);
+		LinearLayout layout = (LinearLayout) container.getChildAt(chatLayout.getChildCount() - 1);
+		TextView view1 = (TextView) layout.getChildAt(layout.getChildCount() - 1);
+		view1.setText(editText.getText());
 		editText.setText("");
-		messageLayout.addView(message);
-
-		chatLayout.addView(messageLayout);
 	}
 	}
 }
