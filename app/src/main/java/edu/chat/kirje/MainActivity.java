@@ -1,5 +1,6 @@
 package edu.chat.kirje;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.Intent;
@@ -11,8 +12,11 @@ import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.MediaController;
 import android.widget.TextView;
+import android.widget.VideoView;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -36,14 +40,43 @@ public class MainActivity extends AppCompatActivity {
 
 
 	public void SendMessage(View view) {
-	EditText editText = findViewById(R.id.editText);
-	if(!"".equals(editText.getText().toString())){
-//		LinearLayout container = (LinearLayout) getLayoutInflater().inflate(R.layout.message_out_container, chatLayout,true);
-//		LinearLayout layout = (LinearLayout) container.getChildAt(chatLayout.getChildCount() - 1);
-//		TextView view1 = (TextView) layout.getChildAt(layout.getChildCount() - 1);
-//		view1.setText(editText.getText());
-//		editText.setText("");
+		EditText editText = findViewById(R.id.editText);
+		if(!editText.getText().toString().isEmpty() || !uris.isEmpty()){//If user Entered message or selected Files to send
+			LinearLayout container = (LinearLayout) getLayoutInflater().inflate(R.layout.message_out_container, chatLayout,true);//OUT MESSAGE appended to Chat Layout (chat Layout returned)
+			for (Uri uri: uris) {
+				String fileType = getFileType(uri);
+				if(fileType.matches("image/.*")){
+					addImageTo(uri, ((LinearLayout) container.getChildAt(container.getChildCount()-1)));//OutMessage is passed to function
+				}else if(fileType.matches("video/.*")){
+					addVideoTo(uri,((LinearLayout) container.getChildAt(container.getChildCount()-1)));
+				}
+			}
+	//		LinearLayout layout = (LinearLayout) container.getChildAt(chatLayout.getChildCount() - 1);
+	//		TextView view1 = (TextView) layout.getChildAt(layout.getChildCount() - 1);
+	//		view1.setText(editText.getText());
+	//		editText.setText("");
+		}
+		clearFileList();
 	}
+
+	//TODO: MAKE VIDE PLAYABLE
+	private void addVideoTo(Uri uri, LinearLayout container) {
+		VideoView videoView = (VideoView) ((LinearLayout) getLayoutInflater().inflate(R.layout.video_view_frame, container, true)).getChildAt(container.getChildCount()-1);
+		videoView.setVideoURI(uri);
+		MediaController mc = new MediaController(this);
+		mc.setAnchorView(videoView);
+		mc.setMediaPlayer(videoView);
+		videoView.setMediaController(mc);
+		videoView.start();
+	}
+
+	private void addImageTo(Uri uri, LinearLayout container) {
+		ImageView imageView = (ImageView) ((LinearLayout) getLayoutInflater().inflate(R.layout.image_view, container, true)).getChildAt(container.getChildCount()-1);
+		imageView.setImageDrawable(getDrawableFromUri(uri));
+	}
+
+	private String getFileType(Uri uri){
+		return  getContentResolver().getType(uri);
 	}
 
 	public void BrowseFiles(View view) {
@@ -53,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
 		intent.setType("*/*");
 		startActivityForResult(intent,READ_REQUEST_CODE);
 	}
+
 	private Drawable getDrawableFromUri(Uri uri){
 		try (ParcelFileDescriptor parcelFileDescriptor = getContentResolver().openFileDescriptor(uri,"r")) {
 			return new BitmapDrawable(getResources(), BitmapFactory.decodeFileDescriptor(parcelFileDescriptor.getFileDescriptor()));
@@ -63,33 +97,18 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	@Override
+	@SuppressLint("InflateParams")
 	protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
 		if (resultCode == Activity.RESULT_OK && requestCode == READ_REQUEST_CODE) {
 			if(data != null){
 				ClipData clipData = data.getClipData();
 				if(clipData!=null){
-//					Uri[] uris = new Uri[clipData.getItemCount()];
 					for (int i = 0; i < clipData.getItemCount(); i++) {
 						uris.add(clipData.getItemAt(i).getUri())  ;
-						LinearLayout fileSelection = (LinearLayout) getLayoutInflater().inflate(R.layout.selected_file_view,null);
+						 LinearLayout fileSelection = (LinearLayout) getLayoutInflater().inflate(R.layout.selected_file_view,null);
 						((TextView) fileSelection.getChildAt(0)).setText(clipData.getItemAt(i).getUri().toString());
 						FileListEL.addView(fileSelection,0);
-//						System.out.println(getContentResolver().getType(uris[i]));
-//						if(getContentResolver().getType(uris[i]).matches("image/.*")){
-//							ImageView imageView = new ImageView(this);
-//							imageView.setImageDrawable(getDrawableFromUri(uris[i]));
-//							chatLayout.addView(imageView);
-//						}else if(getContentResolver().getType(uris[i]).matches("video/.*")){
-//							VideoView videoView = (VideoView) getLayoutInflater().inflate(R.layout.video_view_frame,chatLayout,true);
-//							MediaController mc = new MediaController(this);
-//							mc.setAnchorView(videoView);
-//							mc.setMediaPlayer(videoView);
-//							videoView.setMediaController(mc);
-//							videoView.setVideoURI(uris[i]);
-////							chatLayout.addView(videoView);
-//							videoView.start();
-//						}
 					}
 				}else if(data.getData()!=null) {
 					uris.add(data.getData())  ;
@@ -104,16 +123,25 @@ public class MainActivity extends AppCompatActivity {
 
 	public void UnselectFile(View view) {
 		LinearLayout container = (LinearLayout) view.getParent();
-		String uri = ((TextView) container.getChildAt(0)).getText().toString();
-		uris.removeIf(x->{return x.toString().equals(uri);});
+		uris.removeIf(x-> x.toString().equals(((TextView) container.getChildAt(0)).getText().toString()));
 		((LinearLayout) container.getParent()).removeView(container);
+	}
+
+	private void clearFileList(){
+		int childCount = FileListEL.getChildCount();
+		for (int i = 0; i < childCount-1; i++) {
+			FileListEL.removeViewAt(0);
+		}
+		uris.clear();
+		ExpandFileList(null);
 	}
 
 	public void ExpandFileList(View view) {
 		LinearLayout fileListEl = findViewById(R.id.FileList);
-		if(fileListEl.getVisibility()==View.VISIBLE)
+		if(fileListEl.getVisibility()==View.VISIBLE) {
 			fileListEl.setVisibility(View.GONE);
-		else
+		} else {
 			fileListEl.setVisibility(View.VISIBLE);
+		}
 	}
 }
