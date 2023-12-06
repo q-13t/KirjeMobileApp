@@ -14,14 +14,14 @@ import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.MediaController;
 import android.widget.TextView;
-import android.widget.VideoView;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.util.ArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -29,6 +29,8 @@ public class MainActivity extends AppCompatActivity {
 	private  LinearLayout FileListEL;
 	private static final ArrayList<Uri> uris = new ArrayList<>();
 	private static final int READ_REQUEST_CODE = 1;
+	private static final ExecutorService service = Executors.newCachedThreadPool();
+
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -36,6 +38,9 @@ public class MainActivity extends AppCompatActivity {
 		setContentView(R.layout.activity_main);
 		chatLayout = findViewById(R.id.ChatSection);
 		FileListEL = findViewById(R.id.FileList);
+		service.submit(() -> {
+			UDPOperator.startServer();
+		});
 	}
 
 
@@ -51,23 +56,31 @@ public class MainActivity extends AppCompatActivity {
 					addVideoTo(uri,((LinearLayout) container.getChildAt(container.getChildCount()-1)));
 				}
 			}
-	//		LinearLayout layout = (LinearLayout) container.getChildAt(chatLayout.getChildCount() - 1);
-	//		TextView view1 = (TextView) layout.getChildAt(layout.getChildCount() - 1);
-	//		view1.setText(editText.getText());
-	//		editText.setText("");
-		}
+
+		service.submit(()->{
+			UDPOperator.sendMessage(editText.getText().toString());
+		});
+			LinearLayout inflated = (LinearLayout) getLayoutInflater().inflate(R.layout.message_text, (LinearLayout)container.getChildAt(container.getChildCount()-1), true);
+//			LinearLayout layout = (LinearLayout) container.getChildAt(chatLayout.getChildCount() - 1);
+		TextView view1 = (TextView) inflated.getChildAt(inflated.getChildCount() - 1);
+		view1.setText(editText.getText());
+		editText.setText("");
 		clearFileList();
+		}
 	}
 
 	//TODO: MAKE VIDE PLAYABLE
 	private void addVideoTo(Uri uri, LinearLayout container) {
-		VideoView videoView = (VideoView) ((LinearLayout) getLayoutInflater().inflate(R.layout.video_view_frame, container, true)).getChildAt(container.getChildCount()-1);
-		videoView.setVideoURI(uri);
-		MediaController mc = new MediaController(this);
-		mc.setAnchorView(videoView);
-		mc.setMediaPlayer(videoView);
-		videoView.setMediaController(mc);
-		videoView.start();
+//		LinearLayout LinearLayout = (LinearLayout) getLayoutInflater().inflate(R.layout.video_view_frame, container, true);
+//		FrameLayout frameLayout = (FrameLayout) LinearLayout.getChildAt(LinearLayout.getChildCount() - 1);
+//		VideoView videoView = (VideoView) frameLayout.getChildAt(0);
+////		VideoView videoView = (VideoView)((LinearLayout) getLayoutInflater().inflate(R.layout.video_view_frame, container, true)).getChildAt(container.getChildCount()-1);
+//		videoView.setVideoURI(Uri.parse("https://media.geeksforgeeks.org/wp-content/uploads/20201217192146/Screenrecorder-2020-12-17-19-17-36-828.mp4?_=1"));
+//		videoView.setOnPreparedListener(mp -> videoView.start());
+//		MediaController mc = new MediaController(this);
+//		mc.setAnchorView(videoView);
+//		mc.setMediaPlayer(videoView);
+//		videoView.setMediaController(mc);
 	}
 
 	private void addImageTo(Uri uri, LinearLayout container) {
