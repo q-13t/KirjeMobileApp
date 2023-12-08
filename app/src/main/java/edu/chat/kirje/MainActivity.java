@@ -39,7 +39,7 @@ public class MainActivity extends AppCompatActivity {
 		chatLayout = findViewById(R.id.ChatSection);
 		FileListEL = findViewById(R.id.FileList);
 		service.submit(() -> {
-			UDPOperator.startServer();
+			new UDPOperator();
 		});
 	}
 
@@ -146,7 +146,9 @@ public class MainActivity extends AppCompatActivity {
 			FileListEL.removeViewAt(0);
 		}
 		uris.clear();
-		ExpandFileList(null);
+		if(findViewById(R.id.FileList).getVisibility()==View.VISIBLE){
+			ExpandFileList(null);
+		}
 	}
 
 	public void ExpandFileList(View view) {

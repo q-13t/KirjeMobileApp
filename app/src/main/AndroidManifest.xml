@@ -21,6 +21,19 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:exported="true"
+            android:name=".ScannerActivity">
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="kirje" />
+                <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
