@@ -25,17 +25,13 @@ public class ScannerActivity extends AppCompatActivity {
 	protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
 		IntentResult intentResult = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
-		// if the intentResult is null then
-		// toast a message as "cancelled"
 		if (intentResult != null) {
 			if (intentResult.getContents() == null) {
 				Toast.makeText(getBaseContext(), "Cancelled", Toast.LENGTH_SHORT).show();
 			} else {
-				// if the intentResult is not null we'll set
-				// the content and format of scan message
-//				messageText.setText(intentResult.getContents());
-//				messageFormat.setText(intentResult.getFormatName());
-				Toast.makeText(this, intentResult.getContents()+" "+intentResult.getFormatName(), Toast.LENGTH_LONG).show();
+				Intent intent = new Intent(this, MainActivity.class);
+				intent.putExtra("URI",intentResult.getContents());
+				startActivity(intent);
 			}
 		} else {
 			super.onActivityResult(requestCode, resultCode, data);

@@ -20,6 +20,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -30,17 +31,23 @@ public class MainActivity extends AppCompatActivity {
 	private static final ArrayList<Uri> uris = new ArrayList<>();
 	private static final int READ_REQUEST_CODE = 1;
 	private static final ExecutorService service = Executors.newCachedThreadPool();
-
+	private static STOMPClient stompClient;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
+
 		chatLayout = findViewById(R.id.ChatSection);
 		FileListEL = findViewById(R.id.FileList);
-		service.submit(() -> {
-			new UDPOperator();
-		});
+		Uri uri  =  getIntent().getData();
+		if(uri == null){
+			uri = Uri.parse(getIntent().getStringExtra("URI"));
+		}
+		if(uri!=null){
+			List<String> params  = uri.getPathSegments();
+			stompClient = new STOMPClient(params.get(0));
+		}
 	}
 
 
@@ -57,9 +64,9 @@ public class MainActivity extends AppCompatActivity {
 				}
 			}
 
-		service.submit(()->{
-			UDPOperator.sendMessage(editText.getText().toString());
-		});
+//		service.submit(()->{
+//			STOMPClient.sendMessage(editText.getText().toString());
+//		});
 			LinearLayout inflated = (LinearLayout) getLayoutInflater().inflate(R.layout.message_text, (LinearLayout)container.getChildAt(container.getChildCount()-1), true);
 //			LinearLayout layout = (LinearLayout) container.getChildAt(chatLayout.getChildCount() - 1);
 		TextView view1 = (TextView) inflated.getChildAt(inflated.getChildCount() - 1);
@@ -109,6 +116,9 @@ public class MainActivity extends AppCompatActivity {
 		return null;
 	}
 
+	/**
+	 * Retrieves and handles QR code scanner result
+	 */
 	@Override
 	@SuppressLint("InflateParams")
 	protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
@@ -134,6 +144,10 @@ public class MainActivity extends AppCompatActivity {
 		}
 	}
 
+	/**
+	 * Removes single selected file
+	 * @param view {@link android.widget.Button} that corresponds to selected file in the List.
+	 */
 	public void UnselectFile(View view) {
 		LinearLayout container = (LinearLayout) view.getParent();
 		uris.removeIf(x-> x.toString().equals(((TextView) container.getChildAt(0)).getText().toString()));
