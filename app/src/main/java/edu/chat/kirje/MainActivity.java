@@ -1,5 +1,7 @@
 package edu.chat.kirje;
 
+import static android.content.ContentValues.TAG;
+
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ClipData;
@@ -10,6 +12,7 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
+import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -19,6 +22,9 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -26,12 +32,12 @@ import java.util.concurrent.Executors;
 
 
 public class MainActivity extends AppCompatActivity {
-	private  LinearLayout chatLayout;
-	private  LinearLayout FileListEL;
 	private static final ArrayList<Uri> uris = new ArrayList<>();
 	private static final int READ_REQUEST_CODE = 1;
 	private static final ExecutorService service = Executors.newCachedThreadPool();
 	private static STOMPClient stompClient;
+	private LinearLayout chatLayout;
+	private LinearLayout FileListEL;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -40,12 +46,12 @@ public class MainActivity extends AppCompatActivity {
 
 		chatLayout = findViewById(R.id.ChatSection);
 		FileListEL = findViewById(R.id.FileList);
-		Uri uri  =  getIntent().getData();
-		if(uri == null){
+		Uri uri = getIntent().getData();
+		if (uri == null) {
 			uri = Uri.parse(getIntent().getStringExtra("URI"));
 		}
-		if(uri!=null){
-			List<String> params  = uri.getPathSegments();
+		if (uri != null) {
+			List<String> params = uri.getPathSegments();
 			stompClient = new STOMPClient(params.get(0));
 		}
 	}
@@ -53,26 +59,23 @@ public class MainActivity extends AppCompatActivity {
 
 	public void SendMessage(View view) {
 		EditText editText = findViewById(R.id.editText);
-		if(!editText.getText().toString().isEmpty() || !uris.isEmpty()){//If user Entered message or selected Files to send
-			LinearLayout container = (LinearLayout) getLayoutInflater().inflate(R.layout.message_out_container, chatLayout,true);//OUT MESSAGE appended to Chat Layout (chat Layout returned)
-			for (Uri uri: uris) {
+		if (!editText.getText().toString().isEmpty() || !uris.isEmpty()) {//If user Entered message or selected Files to send
+			LinearLayout container = (LinearLayout) getLayoutInflater().inflate(R.layout.message_out_container, chatLayout, true);//OUT MESSAGE appended to Chat Layout (chat Layout returned)
+			for (Uri uri : uris) {
 				String fileType = getFileType(uri);
-				if(fileType.matches("image/.*")){
-					addImageTo(uri, ((LinearLayout) container.getChildAt(container.getChildCount()-1)));//OutMessage is passed to function
-				}else if(fileType.matches("video/.*")){
-					addVideoTo(uri,((LinearLayout) container.getChildAt(container.getChildCount()-1)));
+				if (fileType.matches("image/.*")) {
+					addImageTo(uri, ((LinearLayout) container.getChildAt(container.getChildCount() - 1)));//OutMessage is passed to function
+				} else if (fileType.matches("video/.*")) {
+					addVideoTo(uri, ((LinearLayout) container.getChildAt(container.getChildCount() - 1)));
 				}
 			}
-
-//		service.submit(()->{
-//			STOMPClient.sendMessage(editText.getText().toString());
-//		});
-			LinearLayout inflated = (LinearLayout) getLayoutInflater().inflate(R.layout.message_text, (LinearLayout)container.getChildAt(container.getChildCount()-1), true);
+			stompClient.sendMessage(editText.getText().toString(), uris, this);
+			LinearLayout inflated = (LinearLayout) getLayoutInflater().inflate(R.layout.message_text, (LinearLayout) container.getChildAt(container.getChildCount() - 1), true);
 //			LinearLayout layout = (LinearLayout) container.getChildAt(chatLayout.getChildCount() - 1);
-		TextView view1 = (TextView) inflated.getChildAt(inflated.getChildCount() - 1);
-		view1.setText(editText.getText());
-		editText.setText("");
-		clearFileList();
+			TextView view1 = (TextView) inflated.getChildAt(inflated.getChildCount() - 1);
+			view1.setText(editText.getText());
+			editText.setText("");
+			clearFileList();
 		}
 	}
 
@@ -91,26 +94,41 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void addImageTo(Uri uri, LinearLayout container) {
-		ImageView imageView = (ImageView) ((LinearLayout) getLayoutInflater().inflate(R.layout.image_view, container, true)).getChildAt(container.getChildCount()-1);
+		ImageView imageView = (ImageView) ((LinearLayout) getLayoutInflater().inflate(R.layout.image_view, container, true)).getChildAt(container.getChildCount() - 1);
 		imageView.setImageDrawable(getDrawableFromUri(uri));
 	}
 
-	private String getFileType(Uri uri){
-		return  getContentResolver().getType(uri);
+	protected String getFileType(Uri uri) {
+		return getContentResolver().getType(uri);
+	}
+
+	protected byte[] getFileBytes(Uri uri) {
+		try (InputStream inputStream = getContentResolver().openInputStream(uri)) {
+			ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+			byte[] buffer = new byte[1024];
+			int len = 0;
+			while ((len = inputStream.read(buffer)) != -1) {
+				byteBuffer.write(buffer, 0, len);
+			}
+			return byteBuffer.toByteArray();
+		} catch (IOException e) {
+			Log.e(TAG, "getFileBytes: Byte Read", e);
+		}
+		return null;
 	}
 
 	public void BrowseFiles(View view) {
 		Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
 		intent.addCategory(Intent.CATEGORY_OPENABLE);
-		intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);
+		intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
 		intent.setType("*/*");
-		startActivityForResult(intent,READ_REQUEST_CODE);
+		startActivityForResult(intent, READ_REQUEST_CODE);
 	}
 
-	private Drawable getDrawableFromUri(Uri uri){
-		try (ParcelFileDescriptor parcelFileDescriptor = getContentResolver().openFileDescriptor(uri,"r")) {
+	private Drawable getDrawableFromUri(Uri uri) {
+		try (ParcelFileDescriptor parcelFileDescriptor = getContentResolver().openFileDescriptor(uri, "r")) {
 			return new BitmapDrawable(getResources(), BitmapFactory.decodeFileDescriptor(parcelFileDescriptor.getFileDescriptor()));
-		}catch (Exception e){
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 		return null;
@@ -124,20 +142,20 @@ public class MainActivity extends AppCompatActivity {
 	protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
 		if (resultCode == Activity.RESULT_OK && requestCode == READ_REQUEST_CODE) {
-			if(data != null){
+			if (data != null) {
 				ClipData clipData = data.getClipData();
-				if(clipData!=null){
+				if (clipData != null) {
 					for (int i = 0; i < clipData.getItemCount(); i++) {
-						uris.add(clipData.getItemAt(i).getUri())  ;
-						 LinearLayout fileSelection = (LinearLayout) getLayoutInflater().inflate(R.layout.selected_file_view,null);
+						uris.add(clipData.getItemAt(i).getUri());
+						LinearLayout fileSelection = (LinearLayout) getLayoutInflater().inflate(R.layout.selected_file_view, null);
 						((TextView) fileSelection.getChildAt(0)).setText(clipData.getItemAt(i).getUri().toString());
-						FileListEL.addView(fileSelection,0);
+						FileListEL.addView(fileSelection, 0);
 					}
-				}else if(data.getData()!=null) {
-					uris.add(data.getData())  ;
-					LinearLayout fileSelection = (LinearLayout) getLayoutInflater().inflate(R.layout.selected_file_view,null);
+				} else if (data.getData() != null) {
+					uris.add(data.getData());
+					LinearLayout fileSelection = (LinearLayout) getLayoutInflater().inflate(R.layout.selected_file_view, null);
 					((TextView) fileSelection.getChildAt(0)).setText(data.getData().toString());
-					FileListEL.addView(fileSelection,0);
+					FileListEL.addView(fileSelection, 0);
 				}
 
 			}
@@ -146,28 +164,29 @@ public class MainActivity extends AppCompatActivity {
 
 	/**
 	 * Removes single selected file
+	 *
 	 * @param view {@link android.widget.Button} that corresponds to selected file in the List.
 	 */
 	public void UnselectFile(View view) {
 		LinearLayout container = (LinearLayout) view.getParent();
-		uris.removeIf(x-> x.toString().equals(((TextView) container.getChildAt(0)).getText().toString()));
+		uris.removeIf(x -> x.toString().equals(((TextView) container.getChildAt(0)).getText().toString()));
 		((LinearLayout) container.getParent()).removeView(container);
 	}
 
-	private void clearFileList(){
+	private void clearFileList() {
 		int childCount = FileListEL.getChildCount();
-		for (int i = 0; i < childCount-1; i++) {
+		for (int i = 0; i < childCount - 1; i++) {
 			FileListEL.removeViewAt(0);
 		}
 		uris.clear();
-		if(findViewById(R.id.FileList).getVisibility()==View.VISIBLE){
+		if (findViewById(R.id.FileList).getVisibility() == View.VISIBLE) {
 			ExpandFileList(null);
 		}
 	}
 
 	public void ExpandFileList(View view) {
 		LinearLayout fileListEl = findViewById(R.id.FileList);
-		if(fileListEl.getVisibility()==View.VISIBLE) {
+		if (fileListEl.getVisibility() == View.VISIBLE) {
 			fileListEl.setVisibility(View.GONE);
 		} else {
 			fileListEl.setVisibility(View.VISIBLE);
