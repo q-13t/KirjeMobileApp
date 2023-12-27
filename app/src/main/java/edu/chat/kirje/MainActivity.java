@@ -22,58 +22,188 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
-import java.io.ByteArrayOutputStream;
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.drafts.Draft_6455;
+import org.java_websocket.handshake.ServerHandshake;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 
 public class MainActivity extends AppCompatActivity {
+	private static final Object lock = new Object();
 	private static final ArrayList<Uri> uris = new ArrayList<>();
 	private static final int READ_REQUEST_CODE = 1;
 	private static final ExecutorService service = Executors.newCachedThreadPool();
-	private static STOMPClient stompClient;
+	private static WebSocketClient WSC = null;
 	private LinearLayout chatLayout;
 	private LinearLayout FileListEL;
+
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		setContentView(R.layout.activity_main);
-
-		chatLayout = findViewById(R.id.ChatSection);
-		FileListEL = findViewById(R.id.FileList);
 		Uri uri = getIntent().getData();
 		if (uri == null) {
 			uri = Uri.parse(getIntent().getStringExtra("URI"));
 		}
+		URI server = null;
 		if (uri != null) {
 			List<String> params = uri.getPathSegments();
-			stompClient = new STOMPClient(params.get(0));
+//			webSocketConnection = new WebSocketConnection();
+			server = null;
+			try {
+				server = new URI("ws://" + params.get(0) + "/");
+			} catch (Exception e) {
+				Log.e(TAG, "onCreate: Uri Error", e);
+			}
+			Log.d(TAG, "onCreate: ServerURI " + server);
+		}
+		if (server != null && (WSC == null || WSC.isClosed())) {
+			WSC = new WebSocketClient(server, new Draft_6455()) {
+
+				@Override
+				public void onOpen(ServerHandshake handshakedata) {
+					Log.i(TAG, "onOpen: WebSocket Connected!");
+				}
+
+				@Override
+				public void onMessage(String message) {
+					System.out.println("received: " + message);
+					try {
+						JSONObject jsonMessage = new JSONObject(message);
+						if (!jsonMessage.isNull("Info")) {
+							if (jsonMessage.getString("Info").equals("Last Connection")) {
+								changeToScanner();
+							} else {
+								runOnUiThread(new Runnable() {
+									@Override
+									public void run() {
+										try {
+											DisplayGenericMessage(jsonMessage.getString("Info"));
+										} catch (JSONException e) {
+											Log.e(TAG, "run: Json Parse UI ", e);
+										}
+									}
+								});
+							}
+						} else {
+							runOnUiThread(new Runnable() {
+								@Override
+								public void run() {
+									try {
+										DisplayMessage(jsonMessage, true);
+									} catch (JSONException e) {
+										Log.e(TAG, "run: Json Parse UI ", e);
+									}
+								}
+							});
+						}
+					} catch (JSONException e) {
+						Log.e(TAG, "onMessage: Json Parse", e);
+					}
+				}
+
+				@Override
+				public void onClose(int code, String reason, boolean remote) {
+					Log.wtf(TAG, "Connection closed by " + (remote ? "remote peer" : "us") + " Code: " + code + " Reason: " + reason);
+					changeToScanner();
+				}
+
+				@Override
+				public void onError(Exception ex) {
+					ex.printStackTrace();
+				}
+
+
+			};
+			WSC.setConnectionLostTimeout(60_000);
+			WSC.connect();
+		}
+		setContentView(R.layout.activity_main);
+		chatLayout = findViewById(R.id.ChatSection);
+		FileListEL = findViewById(R.id.FileList);
+	}
+
+	private void DisplayMessage(JSONObject jsonMessage, boolean incomming) throws JSONException {
+		LinearLayout container;
+		if (incomming) {
+			container = ((LinearLayout) ((LinearLayout) getLayoutInflater().inflate(R.layout.message_in_container, chatLayout, true)).getChildAt(chatLayout.getChildCount() - 1));
+		} else {
+			container = ((LinearLayout) ((LinearLayout) getLayoutInflater().inflate(R.layout.message_out_container, chatLayout, true)).getChildAt(chatLayout.getChildCount() - 1));
+		}
+
+		if (!jsonMessage.isNull("Origin")) {
+			TextView OR = ((TextView) ((LinearLayout) getLayoutInflater().inflate(R.layout.message_text, container, true)).getChildAt(container.getChildCount() - 1));
+			OR.setText(jsonMessage.getString("Origin"));
+		}
+		if (!jsonMessage.isNull("Files")) {
+		}
+		if (!jsonMessage.isNull("Text")) {
+			TextView TEXT = ((TextView) ((LinearLayout) getLayoutInflater().inflate(R.layout.message_text, container, true)).getChildAt(container.getChildCount() - 1));
+			TEXT.setText(jsonMessage.getString("Text"));
 		}
 	}
 
+	public void DisplayGenericMessage(String info) {
+		TextView TV = ((TextView) ((LinearLayout) getLayoutInflater().inflate(R.layout.generic_message, chatLayout, true)).getChildAt(chatLayout.getChildCount() - 1));
+		TV.setText(info);
+	}
 
-	public void SendMessage(View view) {
+	private void changeToScanner() {
+		startActivity(new Intent(this, ScannerActivity.class));
+	}
+
+	public JSONObject convertAndSend(String message, ArrayList<Uri> uris, MainActivity activity) {
+		try {
+			JSONObject jsonObject = new JSONObject();
+			if (message != null && !message.isEmpty()) {
+				jsonObject.put("Text", message);
+			}
+			if (uris != null && !uris.isEmpty()) {
+				JSONArray Files = new JSONArray();
+				for (Uri uri : uris) {
+					JSONObject file = new JSONObject();
+					file.put(activity.getFileType(uri).split("/")[1], Base64.getEncoder().encodeToString(activity.getFileBytes(uri)));
+					Files.put(file);
+				}
+				jsonObject.put("Files", Files);
+			}
+			WSC.send(jsonObject.toString());
+			return jsonObject;
+		} catch (Exception e) {
+			Log.e(TAG, "convertAndSend: Exception", e);
+		}
+		return null;
+	}
+
+
+	public void SendMessage(View view) throws JSONException {
 		EditText editText = findViewById(R.id.editText);
 		if (!editText.getText().toString().isEmpty() || !uris.isEmpty()) {//If user Entered message or selected Files to send
-			LinearLayout container = (LinearLayout) getLayoutInflater().inflate(R.layout.message_out_container, chatLayout, true);//OUT MESSAGE appended to Chat Layout (chat Layout returned)
-			for (Uri uri : uris) {
-				String fileType = getFileType(uri);
-				if (fileType.matches("image/.*")) {
-					addImageTo(uri, ((LinearLayout) container.getChildAt(container.getChildCount() - 1)));//OutMessage is passed to function
-				} else if (fileType.matches("video/.*")) {
-					addVideoTo(uri, ((LinearLayout) container.getChildAt(container.getChildCount() - 1)));
-				}
-			}
-			stompClient.sendMessage(editText.getText().toString(), uris, this);
-			LinearLayout inflated = (LinearLayout) getLayoutInflater().inflate(R.layout.message_text, (LinearLayout) container.getChildAt(container.getChildCount() - 1), true);
+//			LinearLayout container = (LinearLayout) getLayoutInflater().inflate(R.layout.message_out_container, chatLayout, true);//OUT MESSAGE appended to Chat Layout (chat Layout returned)
+//			for (Uri uri : uris) {
+//				String fileType = getFileType(uri);
+//				if (fileType.matches("image/.*")) {
+//					addImageTo(uri, ((LinearLayout) container.getChildAt(container.getChildCount() - 1)));//OutMessage is passed to function
+//				} else if (fileType.matches("video/.*")) {
+//					addVideoTo(uri, ((LinearLayout) container.getChildAt(container.getChildCount() - 1)));
+//				}
+//			}
+			DisplayMessage(convertAndSend(editText.getText().toString(), uris, this), false);
+//			LinearLayout inflated = (LinearLayout) getLayoutInflater().inflate(R.layout.message_text, (LinearLayout) container.getChildAt(container.getChildCount() - 1), true);
 //			LinearLayout layout = (LinearLayout) container.getChildAt(chatLayout.getChildCount() - 1);
-			TextView view1 = (TextView) inflated.getChildAt(inflated.getChildCount() - 1);
-			view1.setText(editText.getText());
+//			TextView view1 = (TextView) inflated.getChildAt(inflated.getChildCount() - 1);
+//			view1.setText(editText.getText());
 			editText.setText("");
 			clearFileList();
 		}
@@ -104,13 +234,9 @@ public class MainActivity extends AppCompatActivity {
 
 	protected byte[] getFileBytes(Uri uri) {
 		try (InputStream inputStream = getContentResolver().openInputStream(uri)) {
-			ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
-			byte[] buffer = new byte[1024];
-			int len = 0;
-			while ((len = inputStream.read(buffer)) != -1) {
-				byteBuffer.write(buffer, 0, len);
-			}
-			return byteBuffer.toByteArray();
+			byte[] buffer = new byte[inputStream.available()];
+			inputStream.read(buffer);
+			return buffer;
 		} catch (IOException e) {
 			Log.e(TAG, "getFileBytes: Byte Read", e);
 		}
@@ -135,7 +261,7 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	/**
-	 * Retrieves and handles QR code scanner result
+	 * Retrieves and handles file uris
 	 */
 	@Override
 	@SuppressLint("InflateParams")
@@ -192,4 +318,5 @@ public class MainActivity extends AppCompatActivity {
 			fileListEl.setVisibility(View.VISIBLE);
 		}
 	}
+
 }
