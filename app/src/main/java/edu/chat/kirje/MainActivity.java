@@ -9,15 +9,19 @@ import android.content.Intent;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.MediaController;
 import android.widget.TextView;
+import android.widget.VideoView;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -29,6 +33,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -44,10 +50,10 @@ public class MainActivity extends AppCompatActivity {
 	private static final ArrayList<Uri> uris = new ArrayList<>();
 	private static final int READ_REQUEST_CODE = 1;
 	private static final ExecutorService service = Executors.newCachedThreadPool();
+	private static MediaMetadataRetriever retriever;
 	private static WebSocketClient WSC = null;
 	private LinearLayout chatLayout;
 	private LinearLayout FileListEL;
-
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -102,7 +108,7 @@ public class MainActivity extends AppCompatActivity {
 								public void run() {
 									try {
 										DisplayMessage(jsonMessage, true);
-									} catch (JSONException e) {
+									} catch (JSONException | IOException e) {
 										Log.e(TAG, "run: Json Parse UI ", e);
 									}
 								}
@@ -134,9 +140,9 @@ public class MainActivity extends AppCompatActivity {
 		FileListEL = findViewById(R.id.FileList);
 	}
 
-	private void DisplayMessage(JSONObject jsonMessage, boolean incomming) throws JSONException {
+	private void DisplayMessage(JSONObject jsonMessage, boolean incoming) throws JSONException, IOException {
 		LinearLayout container;
-		if (incomming) {
+		if (incoming) {
 			container = ((LinearLayout) ((LinearLayout) getLayoutInflater().inflate(R.layout.message_in_container, chatLayout, true)).getChildAt(chatLayout.getChildCount() - 1));
 		} else {
 			container = ((LinearLayout) ((LinearLayout) getLayoutInflater().inflate(R.layout.message_out_container, chatLayout, true)).getChildAt(chatLayout.getChildCount() - 1));
@@ -147,6 +153,54 @@ public class MainActivity extends AppCompatActivity {
 			OR.setText(jsonMessage.getString("Origin"));
 		}
 		if (!jsonMessage.isNull("Files")) {
+			JSONArray files = jsonMessage.getJSONArray("Files");
+			for (int i = 0; i < files.length(); i++) {
+				JSONObject file = files.getJSONObject(i);
+				String type = file.keys().next();
+				String data = file.getString(type);
+				if (data.contains("base64,")) {
+					data = data.substring(data.indexOf(',') + 1);
+				}
+				byte[] bytes = Base64.getDecoder().decode(data);
+				switch (type) {
+					case "jpeg":
+					case "jpg":
+					case "png": {
+						ImageView image = ((ImageView) ((LinearLayout) getLayoutInflater().inflate(R.layout.image_view, container, true)).getChildAt(container.getChildCount() - 1));
+						image.setImageDrawable(new BitmapDrawable(getResources(), BitmapFactory.decodeByteArray(bytes, 0, bytes.length)));
+						break;
+					}
+					case "mp4": {
+						FrameLayout relativeLayout = ((FrameLayout) ((LinearLayout) getLayoutInflater().inflate(R.layout.video_view_frame, container, true)).getChildAt(container.getChildCount() - 1));
+						VideoView videoView = ((VideoView) relativeLayout.getChildAt(0));
+						File tempVideo = File.createTempFile("tempVideo", ".mp4", getCacheDir());
+						tempVideo.deleteOnExit();
+						try (FileOutputStream FOS = new FileOutputStream(tempVideo)) {
+							FOS.write(bytes);
+						}
+						retriever = new MediaMetadataRetriever();
+						retriever.setDataSource(this, Uri.fromFile(tempVideo));
+						int height = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
+						int width = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
+						videoView.getLayoutParams().height = height;
+						videoView.getLayoutParams().width = FrameLayout.LayoutParams.MATCH_PARENT;
+						relativeLayout.getLayoutParams().height = height;
+						relativeLayout.getLayoutParams().width = FrameLayout.LayoutParams.MATCH_PARENT;
+						retriever.release();
+						videoView.setOnErrorListener((mp, what, extra) -> {
+							Log.e(TAG, "Video preparation error. What: " + what + ", Extra: " + extra);
+							return false;
+						});
+						videoView.setVideoURI(Uri.fromFile(tempVideo));
+						MediaController mediaController = new MediaController(this);
+						mediaController.setAnchorView(relativeLayout);
+						mediaController.setEnabled(true);
+						videoView.setMediaController(mediaController);
+						videoView.start();
+						break;
+					}
+				}
+			}
 		}
 		if (!jsonMessage.isNull("Text")) {
 			TextView TEXT = ((TextView) ((LinearLayout) getLayoutInflater().inflate(R.layout.message_text, container, true)).getChildAt(container.getChildCount() - 1));
@@ -187,45 +241,13 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 
-	public void SendMessage(View view) throws JSONException {
+	public void SendMessage(View view) throws JSONException, IOException {
 		EditText editText = findViewById(R.id.editText);
 		if (!editText.getText().toString().isEmpty() || !uris.isEmpty()) {//If user Entered message or selected Files to send
-//			LinearLayout container = (LinearLayout) getLayoutInflater().inflate(R.layout.message_out_container, chatLayout, true);//OUT MESSAGE appended to Chat Layout (chat Layout returned)
-//			for (Uri uri : uris) {
-//				String fileType = getFileType(uri);
-//				if (fileType.matches("image/.*")) {
-//					addImageTo(uri, ((LinearLayout) container.getChildAt(container.getChildCount() - 1)));//OutMessage is passed to function
-//				} else if (fileType.matches("video/.*")) {
-//					addVideoTo(uri, ((LinearLayout) container.getChildAt(container.getChildCount() - 1)));
-//				}
-//			}
 			DisplayMessage(convertAndSend(editText.getText().toString(), uris, this), false);
-//			LinearLayout inflated = (LinearLayout) getLayoutInflater().inflate(R.layout.message_text, (LinearLayout) container.getChildAt(container.getChildCount() - 1), true);
-//			LinearLayout layout = (LinearLayout) container.getChildAt(chatLayout.getChildCount() - 1);
-//			TextView view1 = (TextView) inflated.getChildAt(inflated.getChildCount() - 1);
-//			view1.setText(editText.getText());
 			editText.setText("");
 			clearFileList();
 		}
-	}
-
-	//TODO: MAKE VIDE PLAYABLE
-	private void addVideoTo(Uri uri, LinearLayout container) {
-//		LinearLayout LinearLayout = (LinearLayout) getLayoutInflater().inflate(R.layout.video_view_frame, container, true);
-//		FrameLayout frameLayout = (FrameLayout) LinearLayout.getChildAt(LinearLayout.getChildCount() - 1);
-//		VideoView videoView = (VideoView) frameLayout.getChildAt(0);
-////		VideoView videoView = (VideoView)((LinearLayout) getLayoutInflater().inflate(R.layout.video_view_frame, container, true)).getChildAt(container.getChildCount()-1);
-//		videoView.setVideoURI(Uri.parse("https://media.geeksforgeeks.org/wp-content/uploads/20201217192146/Screenrecorder-2020-12-17-19-17-36-828.mp4?_=1"));
-//		videoView.setOnPreparedListener(mp -> videoView.start());
-//		MediaController mc = new MediaController(this);
-//		mc.setAnchorView(videoView);
-//		mc.setMediaPlayer(videoView);
-//		videoView.setMediaController(mc);
-	}
-
-	private void addImageTo(Uri uri, LinearLayout container) {
-		ImageView imageView = (ImageView) ((LinearLayout) getLayoutInflater().inflate(R.layout.image_view, container, true)).getChildAt(container.getChildCount() - 1);
-		imageView.setImageDrawable(getDrawableFromUri(uri));
 	}
 
 	protected String getFileType(Uri uri) {
