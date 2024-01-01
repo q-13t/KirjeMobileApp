@@ -82,7 +82,6 @@ public class MainActivity extends AppCompatActivity {
 		if (executor == null) {
 			executor = Executors.newSingleThreadExecutor();
 			handler = new Handler(Looper.getMainLooper());
-			mediaController = new MediaController(this);
 		}
 		Uri uri = getIntent().getData();
 		if (uri == null) {
@@ -186,8 +185,8 @@ public class MainActivity extends AppCompatActivity {
 							break;
 						}
 						case "mp4": {
-							FrameLayout relativeLayout = ((FrameLayout) ((LinearLayout) getLayoutInflater().inflate(R.layout.video_view_frame, container, true)).getChildAt(container.getChildCount() - 1));
-							VideoView videoView = ((VideoView) relativeLayout.getChildAt(0));
+							FrameLayout frameLayout = ((FrameLayout) ((LinearLayout) getLayoutInflater().inflate(R.layout.video_view_frame, container, true)).getChildAt(container.getChildCount() - 1));
+							VideoView videoView = ((VideoView) frameLayout.getChildAt(0));
 							File tempVideo = File.createTempFile("tempVideo", ".mp4", getCacheDir());
 							tempVideo.deleteOnExit();
 							try (FileOutputStream FOS = new FileOutputStream(tempVideo)) {
@@ -195,11 +194,10 @@ public class MainActivity extends AppCompatActivity {
 							}
 							try (MediaMetadataRetriever retriever = new MediaMetadataRetriever()) {
 								retriever.setDataSource(this, Uri.fromFile(tempVideo));
-								int height = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
-								videoView.getLayoutParams().height = height;
-								videoView.getLayoutParams().width = FrameLayout.LayoutParams.MATCH_PARENT;
-								relativeLayout.getLayoutParams().height = height;
-								relativeLayout.getLayoutParams().width = FrameLayout.LayoutParams.MATCH_PARENT;
+								videoView.getLayoutParams().height = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
+								videoView.getLayoutParams().width = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
+								frameLayout.getLayoutParams().height = FrameLayout.LayoutParams.WRAP_CONTENT;
+								frameLayout.getLayoutParams().width = FrameLayout.LayoutParams.WRAP_CONTENT;
 								retriever.release();
 							}
 							videoView.setOnErrorListener((mp, what, extra) -> {
@@ -210,7 +208,8 @@ public class MainActivity extends AppCompatActivity {
 							if (mediaController == null) {
 								mediaController = new MediaController(this);
 							}
-							mediaController.setAnchorView(relativeLayout);
+							mediaController.setAnchorView(frameLayout);
+							mediaController.setMediaPlayer(videoView);
 							videoView.setMediaController(mediaController);
 							videoView.start();
 							break;
@@ -226,6 +225,7 @@ public class MainActivity extends AppCompatActivity {
 		} catch (JSONException | IOException e) {
 			Log.e(TAG, "DisplayMessage: ", e);
 		}
+		System.gc();
 	}
 
 	public void DisplayGenericMessage(String info) {
@@ -322,5 +322,20 @@ public class MainActivity extends AppCompatActivity {
 			fileListEl.setVisibility(View.VISIBLE);
 		}
 	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		mediaController = new MediaController(this);
+	}
+
+	@Override
+	protected void onPause() {
+		super.onPause();
+		System.gc();
+		mediaController = null;
+
+	}
+
 
 }
